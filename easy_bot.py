@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 
 BOT_TOKEN    = "8792525541:AAF9ZRfZDZdC5nnini_S0SHxUfVTesYKBp4"
-GROQ_API_KEY = "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"
+GROQ_API_KEY = "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"
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -479,4 +479,5 @@ def main():
     app.run_polling()
 
 if __name__ == "__main__":
+
     main()
