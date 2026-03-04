@@ -108,17 +108,16 @@ async def slots_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "slots_coins" not in context.user_data:
         context.user_data["slots_coins"] = 100
     coins = context.user_data["slots_coins"]
-    kb = [["10 монет", "25 монет", "50 монет", "Всё"]]
+    kb = [["10 монет", "25 монет"], ["50 монет", "Всё ва-банк!"]]
     await update.message.reply_text(
         f"🎰 *Слот-машина!*\n\n"
         f"💰 Твой баланс: *{coins} монет*\n\n"
-        f"*Выигрыши:*\n"
-        f"💎💎💎 — x50 | 7️⃣7️⃣7️⃣ — x20\n"
-        f"🔔🔔🔔 — x15 | ⭐⭐⭐ — x10\n"
-        f"🍇🍇🍇 — x8  | 🍊🍊🍊 — x6\n"
-        f"🍋🍋🍋 — x4  | 🍒🍒🍒 — x3\n"
+        f"*Выигрыши (все три одинаковых):*\n"
+        f"💎 — x50 | 7️⃣ — x20 | 🔔 — x15\n"
+        f"⭐ — x10 | 🍇 — x8 | 🍊 — x6\n"
+        f"🍋 — x4 | 🍒 — x3\n"
         f"Два одинаковых — x2\n\n"
-        f"Выбери ставку:",
+        f"Выбери ставку или /stop для выхода:",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True),
         parse_mode="Markdown"
     )
@@ -127,18 +126,14 @@ async def slots_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def slots_bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     coins = context.user_data.get("slots_coins", 100)
-
-    if text == "Всё":
-        bet = coins
-    else:
-        mapping = {"10 монет": 10, "25 монет": 25, "50 монет": 50}
-        bet = mapping.get(text)
-        if bet is None:
-            try:
-                bet = int(text)
-            except ValueError:
-                await update.message.reply_text("⚠️ Выбери ставку из меню!")
-                return WAITING_SLOTS_BET
+    mapping = {"10 монет": 10, "25 монет": 25, "50 монет": 50, "Всё ва-банк!": coins}
+    bet = mapping.get(text)
+    if bet is None:
+        try:
+            bet = int(text)
+        except ValueError:
+            await update.message.reply_text("⚠️ Выбери ставку из меню или /stop для выхода!")
+            return WAITING_SLOTS_BET
 
     if bet <= 0 or bet > coins:
         await update.message.reply_text(f"⚠️ Недостаточно монет! У тебя *{coins}* монет.", parse_mode="Markdown")
@@ -147,33 +142,43 @@ async def slots_bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reels = spin_slots()
     payout, msg = calc_payout(reels, bet)
     context.user_data["slots_coins"] = coins - bet + payout
-
     new_balance = context.user_data["slots_coins"]
     result_line = " | ".join(reels)
 
-    kb = [["🎰 Крутить снова", "🏠 В меню"]]
+    kb = [["10 монет", "25 монет"], ["50 монет", "Всё ва-банк!"]]
+    extra = ""
+    if new_balance <= 0:
+        context.user_data["slots_coins"] = 100
+        new_balance = 100
+        extra = "\n\n💸 *Монеты закончились!* Даю 100 новых монет 🎁"
+
     await update.message.reply_text(
         f"🎰 *[ {result_line} ]*\n\n"
         f"{msg}\n"
-        f"Ставка: *{bet}* монет\n"
-        f"{'Выигрыш' if payout > 0 else 'Потеря'}: *{payout if payout > 0 else bet}* монет\n\n"
-        f"💰 Баланс: *{new_balance}* монет" +
-        (f"\n\n💸 *Монеты закончились!* Начинаем заново..." if new_balance <= 0 else ""),
+        f"Ставка: *{bet}* | {'Выигрыш' if payout > 0 else 'Потеря'}: *{payout if payout > 0 else bet}*\n\n"
+        f"💰 Баланс: *{new_balance} монет*{extra}\n\n"
+        f"Крути снова или /stop для выхода:",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True),
         parse_mode="Markdown"
     )
-
-    if new_balance <= 0:
-        context.user_data["slots_coins"] = 100
-
     return WAITING_SLOTS_BET
 
-async def slots_again(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    if text == "🏠 В меню":
-        await update.message.reply_text("🏠 Возвращаемся в меню. /start", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
-    return await slots_start(update, context)
+# ===================== УНИВЕРСАЛЬНАЯ ОТМЕНА =====================
+async def stop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "⛔ *Остановлено!*\n/start — главное меню",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "⛔ *Остановлено!*\n/start — главное меню",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
 
 # ===================== /start =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -195,10 +200,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  /slots — 🎰 Слот-машина\n\n"
         "🛠️ *Инструменты:*\n"
         "  /kalck — 🧮 Калькулятор\n"
-        "  /launge — 🌍 Переводчик RU ↔ EN\n"
-        "  /stop — ⛔ Остановить переводчик\n\n"
+        "  /launge — 🌍 Переводчик RU ↔ EN\n\n"
         "🤖 *ИИ-ассистент:*\n"
         "  /ai — Поговори со мной как с другом!\n\n"
+        "❗ */stop — остановить любую команду*\n\n"
         "Выбери команду и поехали! 🚀"
     )
     await update.message.reply_text(text, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
@@ -277,7 +282,7 @@ async def kosti_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["kosti_number"] = random.randint(1, 10)
     context.user_data["kosti_attempts"] = 0
     await update.message.reply_text(
-        "🎲 *Игра: Угадай число!*\n\nЯ загадал число от *1 до 10*.\nНапиши своё число! 🤔",
+        "🎲 *Игра: Угадай число!*\n\nЯ загадал число от *1 до 10*.\nНапиши своё число!\n\n/stop — выйти",
         parse_mode="Markdown"
     )
     return WAITING_KOSTI_GUESS
@@ -300,7 +305,7 @@ async def kosti_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
     hint = "больше" if secret > guess else "меньше"
-    await update.message.reply_text(f"❌ Неверно! Моё число *{hint}*, чем {guess}.\nПопробуй ещё:", parse_mode="Markdown")
+    await update.message.reply_text(f"❌ Неверно! Моё число *{hint}*, чем {guess}.\nПопробуй ещё или /stop:", parse_mode="Markdown")
     return WAITING_KOSTI_GUESS
 
 # ===================== КНБ =====================
@@ -308,7 +313,8 @@ async def suyefa_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [["🪨 Камень", "✂️ Ножницы", "📄 Бумага"]]
     await update.message.reply_text(
         "✂️ *Камень, Ножницы, Бумага!*\n\n"
-        "🪨 Камень бьёт Ножницы\n✂️ Ножницы бьют Бумагу\n📄 Бумага бьёт Камень\n\nВыбери:",
+        "🪨 Камень бьёт Ножницы\n✂️ Ножницы бьют Бумагу\n📄 Бумага бьёт Камень\n\n"
+        "Выбери или /stop для выхода:",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True),
         parse_mode="Markdown"
     )
@@ -330,7 +336,7 @@ async def suyefa_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = "🤝 *Ничья!*" if user_choice == bot_choice else ("🎉 *Ты победил!*" if wins[user_choice] == bot_choice else "😈 *Бот победил!*")
     await update.message.reply_text(
         f"Ты: {emojis[user_choice]} *{user_choice.capitalize()}*\n"
-        f"Бот: {emojis[bot_choice]} *{bot_choice.capitalize()}*\n\n{result}\n\nЕщё? /Cyefa",
+        f"Бот: {emojis[bot_choice]} *{bot_choice.capitalize()}*\n\n{result}\n\nЕщё? /Cyefa | Выход: /stop",
         parse_mode="Markdown", reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
@@ -357,7 +363,8 @@ async def mines_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "💣 *Игра: Сапёр!*\n\nПоле *18 ячеек*. Под некоторыми мины 💣\n\n"
         "  ✅ — безопасно\n  💣 — мина, игра окончена!\n\n"
-        "Открой все безопасные — *победа!* 🏆\n\nВыбери сложность:",
+        "Открой все безопасные — *победа!* 🏆\n\n"
+        "Выбери сложность или /stop для выхода:",
         reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True),
         parse_mode="Markdown"
     )
@@ -367,7 +374,7 @@ async def mines_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mapping = {"3 мины 😊":3,"5 мин 😐":5,"7 мин 😰":7,"10 мин 💀":10}
     count = mapping.get(update.message.text.strip())
     if count is None:
-        await update.message.reply_text("⚠️ Выбери сложность из меню!", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("⚠️ Выбери сложность из меню или /stop для выхода!", reply_markup=ReplyKeyboardRemove())
         return WAITING_MINES_COUNT
     board = ["SAFE"] * 18
     for pos in random.sample(range(18), count):
@@ -378,7 +385,7 @@ async def mines_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["mines_safe_left"] = 18 - count
     markup = build_mines_keyboard(board, [False] * 18)
     await update.message.reply_text(
-        f"💣 *Сапёр* | Мин: {count} | Безопасных: {18-count}\n\nНажимай на ячейки — удачи! 🍀",
+        f"💣 *Сапёр* | Мин: {count} | Безопасных: {18-count}\n\nНажимай на ячейки — удачи! 🍀\n/stop — выйти",
         reply_markup=markup, parse_mode="Markdown"
     )
     return ConversationHandler.END
@@ -417,17 +424,17 @@ async def mines_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await query.edit_message_text(
-                f"💣 *Сапёр* | Мин: {mine_count} | Осталось: {safe_left}\n\n✅ Безопасно! Продолжай!",
+                f"💣 *Сапёр* | Мин: {mine_count} | Осталось: {safe_left}\n\n✅ Безопасно! Продолжай!\n/stop — выйти",
                 reply_markup=markup, parse_mode="Markdown"
             )
 
-# ===================== ПЕРЕВОДЧИК (с /stop) =====================
+# ===================== ПЕРЕВОДЧИК =====================
 async def launge_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🌍 *Переводчик RU ↔ EN*\n\n"
-        "Отправь слово или предложение — переведу автоматически!\n"
+        "Отправь слово или предложение — переведу!\n"
         "Кириллица → Английский, латиница → Русский\n\n"
-        "Для остановки: /stop\nДля меню: /start",
+        "/stop — остановить переводчик",
         parse_mode="Markdown"
     )
     return WAITING_TRANSLATE_TEXT
@@ -450,20 +457,13 @@ async def launge_translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка перевода. Попробуй снова.\n`{e}`", parse_mode="Markdown")
+        await update.message.reply_text(f"❌ Ошибка перевода.\n`{e}`", parse_mode="Markdown")
     return WAITING_TRANSLATE_TEXT
-
-async def stop_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "⛔ Переводчик остановлен.\n/start — главное меню",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return ConversationHandler.END
 
 # ===================== КАЛЬКУЛЯТОР =====================
 async def kalck_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🧮 *Калькулятор*\n\nОтправь пример: `12 + 34`, `100 * 5 - 3`, `256 % 7`\n\nДля выхода: /start",
+        "🧮 *Калькулятор*\n\nОтправь пример: `12 + 34`, `100 * 5`\n\n/stop — выйти",
         parse_mode="Markdown"
     )
     return WAITING_CALC_EXPR
@@ -480,14 +480,14 @@ async def kalck_compute(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = eval(expr, {"__builtins__": {}}, {})
         if isinstance(result, float):
             result = round(result, 10)
-        await update.message.reply_text(f"🧮 `{expr}` = *{result}*\n\nВведи ещё или /start", parse_mode="Markdown")
+        await update.message.reply_text(f"🧮 `{expr}` = *{result}*\n\nВведи ещё или /stop", parse_mode="Markdown")
     except ZeroDivisionError:
         await update.message.reply_text("❌ Деление на ноль!")
     except Exception:
         await update.message.reply_text("❌ Не могу вычислить. Проверь пример.")
     return WAITING_CALC_EXPR
 
-# ===================== ИИ АССИСТЕНТ (GROQ) =====================
+# ===================== ИИ АССИСТЕНТ =====================
 AI_SYSTEM = """Ты дружелюбный русскоязычный бот-собеседник по имени Дружок. Общаешься как близкий друг — тепло, с юмором, живо.
 Правила:
 - Всегда отвечай на русском языке
@@ -505,8 +505,8 @@ async def ai_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name or "друг"
     await update.message.reply_text(
         f"🤖 Привет, {name}! Я Дружок — твой ИИ-собеседник.\n\n"
-        "Можем говорить о чём угодно: жизнь, игры, кино, советы 😄\n\n"
-        "Пиши что хочешь! Для выхода: /start"
+        "Можем говорить о чём угодно 😄\n\n"
+        "Пиши что хочешь! /stop — выйти"
     )
     return WAITING_AI_CHAT
 
@@ -542,11 +542,6 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(ai_reply)
     return WAITING_AI_CHAT
 
-# ===================== ОТМЕНА =====================
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Действие отменено. /start — в главное меню.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
 # ===================== ЗАПУСК =====================
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
@@ -559,44 +554,49 @@ def main():
     app.add_handler(CommandHandler("mood", mood))
     app.add_handler(CommandHandler("holidays", holidays))
 
+    FALLBACKS = [
+        CommandHandler("stop", stop_cmd),
+        CommandHandler("start", cancel),
+    ]
+
     app.add_handler(ConversationHandler(
         entry_points=[CommandHandler("kosti", kosti_start)],
         states={WAITING_KOSTI_GUESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, kosti_guess)]},
-        fallbacks=[CommandHandler("start", cancel), CommandHandler("stop", cancel)],
+        fallbacks=FALLBACKS,
     ))
     app.add_handler(ConversationHandler(
         entry_points=[CommandHandler("Cyefa", suyefa_start)],
         states={WAITING_SUYEFA_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, suyefa_choice)]},
-        fallbacks=[CommandHandler("start", cancel), CommandHandler("stop", cancel)],
+        fallbacks=FALLBACKS,
     ))
     app.add_handler(ConversationHandler(
         entry_points=[CommandHandler("mines", mines_start)],
         states={WAITING_MINES_COUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, mines_count)]},
-        fallbacks=[CommandHandler("start", cancel), CommandHandler("stop", cancel)],
+        fallbacks=FALLBACKS,
     ))
     app.add_handler(CallbackQueryHandler(mines_callback, pattern=r"^mines_\d+$"))
 
     app.add_handler(ConversationHandler(
         entry_points=[CommandHandler("slots", slots_start)],
         states={WAITING_SLOTS_BET: [MessageHandler(filters.TEXT & ~filters.COMMAND, slots_bet)]},
-        fallbacks=[CommandHandler("start", cancel), CommandHandler("stop", cancel)],
+        fallbacks=FALLBACKS,
     ))
 
     # ПЕРЕВОДЧИК — выше калькулятора!
     app.add_handler(ConversationHandler(
         entry_points=[CommandHandler("launge", launge_start)],
         states={WAITING_TRANSLATE_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, launge_translate)]},
-        fallbacks=[CommandHandler("start", cancel), CommandHandler("stop", stop_cmd)],
+        fallbacks=FALLBACKS,
     ))
     app.add_handler(ConversationHandler(
         entry_points=[CommandHandler("kalck", kalck_start)],
         states={WAITING_CALC_EXPR: [MessageHandler(filters.TEXT & ~filters.COMMAND, kalck_compute)]},
-        fallbacks=[CommandHandler("start", cancel), CommandHandler("stop", cancel)],
+        fallbacks=FALLBACKS,
     ))
     app.add_handler(ConversationHandler(
         entry_points=[CommandHandler("ai", ai_start)],
         states={WAITING_AI_CHAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat)]},
-        fallbacks=[CommandHandler("start", cancel), CommandHandler("stop", cancel)],
+        fallbacks=FALLBACKS,
     ))
 
     print("✅ Бот запущен! Нажми Ctrl+C для остановки.")
